@@ -1,0 +1,144 @@
+;
+;  This table is used to translate key codes into characters.
+;  It is addressed by shifting the second byte of each key-down
+;  sequence one bit left, and inserting the shift modifier bit from
+;  the first byte as the low order bit of the address.
+;
+        .ORG     KEY_TBL
+
+        .BYTE   0FFH,0FFH
+        .BYTE   "5","%"
+        .BYTE   86H,0C6H
+        .BYTE   0FFH,0FFH
+        .BYTE   ",",","
+        .BYTE   81H,0C1H
+        .BYTE   "z","Z"
+        .BYTE   "x","X"
+        .BYTE   "c","C"
+        .BYTE   "v","V"
+        .BYTE   87H,0C7H
+        .BYTE   89H,0C9H
+        .BYTE   ".","."
+        .BYTE   97H,0D7H
+        .BYTE   0FFH,0FFH
+        .BYTE   08H,008H
+        
+        .BYTE   98H,0D8H
+        .BYTE   "^","~"
+        .BYTE   ":","*"
+        .BYTE   3BH,"+"
+        .BYTE   "2",022H
+        .BYTE   "1","!"
+        .BYTE   "a","A"
+        .BYTE   "s","S"
+        .BYTE   "d","D"
+        .BYTE   "g","G"
+        .BYTE   "j","J"
+        .BYTE   "h","H"
+        .BYTE   "f","F"
+        .BYTE   "k","K"
+        .BYTE   "/","?"
+        .BYTE   96H,0D6H
+        
+        .BYTE   "p","P"
+        .BYTE   "q","Q"
+        .BYTE   09H,009H
+        .BYTE   "w","W"
+        .BYTE   "e","E"
+        .BYTE   "r","R"
+        .BYTE   "y","Y"
+        .BYTE   "8","("
+        .BYTE   "u","U"
+        .BYTE   "t","T"
+        .BYTE   " "," "
+        .BYTE   "6","&"
+        .BYTE   99H,0D9H
+        .BYTE   0FFH,0FFH
+        .BYTE   "3","#"
+        .BYTE   "i","I"
+        
+        .BYTE   0FFH,0FFH
+        .BYTE   "l","L"
+        .BYTE   "o","O"
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   "9",")"
+        .BYTE   "4","$"
+        .BYTE   88H,0C8H
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   "0","="
+
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   8AH,0CAH
+        .BYTE   8BH,0CBH
+        .BYTE   8CH,0CCH
+        .BYTE   "7","'"
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   "|","`"
+        .BYTE   0DH,00DH
+        .BYTE   "[","{"
+        .BYTE   "@","\"
+        .BYTE   8DH,0CDH
+        .BYTE   0FFH,0FFH
+
+        .BYTE   "b","B"
+        .BYTE   "n","N"
+        .BYTE   "m","M"
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   "-","_"
+        .BYTE   "]","}"
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   "<",">"
+        .BYTE   0FFH,0FFH
+        .BYTE   9BH,0DBH
+        .BYTE   85H,0C5H
+        .BYTE   0ADH,0EDH
+        .BYTE   0ABH,0EBH
+
+        .BYTE   83H,0C3H
+        .BYTE   82H,0C2H
+        .BYTE   0A8H,0E8H
+        .BYTE   0A9H,0E9H
+        .BYTE   0AAH,0EAH
+        .BYTE   84H,0C4H
+        .BYTE   0A4H,0E4H
+        .BYTE   0A5H,0E5H
+        .BYTE   0A6H,0E6H
+        .BYTE   095H,0D5H
+        .BYTE   094H,0D4H
+        .BYTE   0A0H,0E0H
+        .BYTE   0A1H,0E1H
+        .BYTE   0A2H,0E2H
+        .BYTE   093H,0D3H
+        .BYTE   092H,0D2H
+
+        .BYTE   0A7H,0E7H
+        .BYTE   0A3H,0E3H
+        .BYTE   0FFH,0FFH
+        .BYTE   091H,0D1H
+        .BYTE   090H,0D0H
+        .BYTE   0ACH,0ECH
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+        .BYTE   0FFH,0FFH
+
