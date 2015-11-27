@@ -1,205 +1,410 @@
 
+
 ;
+
 ;               ASMINC  -  Include file for Z80 assemblies
+
 ;
 
-        
+
+
+
+
 ;
+
 ;  LISTING CONTROL
-;
-        .NOMACROLIST
-        
-        .IF     LISTINC=0
-        .NOLIST
-        .ENDC
-
 
 ;
+
+	.NOMACROLIST
+
+
+
+	.IF     LISTINC=0
+
+	.NOLIST
+
+	.ENDC
+
+
+
+
+
+;
+
 ;  Monitor request symbols
+
 ;
+
 M_PTRWRT        .EQU    3H      ; WRITE TO PRINTER
+
 M_DSPCHR        .EQU    6H      ;DISPLAY CHARACTER
+
 M_DSPSTR        .EQU    9H      ;DISPLAY STRING
+
 M_OSEXIT        .EQU    0CH     ;OS EXIT TO MONITOR
+
 M_KBSTAT        .EQU    0FH     ;GET KEYBOARD STATUS
+
 M_KBCHNE        .EQU    12H     ;READ KEYBOARD W/O ECHO
+
 M_KBCHAR        .EQU    15H     ;READ ONE CHARACTER FROM KEYBOARD
+
 M_SERSET        .EQU    18H     ;SET SERIAL INTERFACE PARAMETERS
+
 M_DSPTXT        .EQU    1BH     ;DISPLAY TEXT ARRAY
+
 M_DSKADR        .EQU    1EH     ;CONVERT DISK ADDRESS
+
 M_RDCLK         .EQU    21H     ; READ 60HZ TICK CLOCK
+
 M_DSKRD         .EQU    24H     ;READ DISK
+
 M_DSKWRT        .EQU    27H     ;WRITE DISK
+
 M_SRSTAT        .EQU    2DH     ;GET SERIAL INTERFACE STATUS
+
 M_SRRD          .EQU    30H     ;READ CHAR FROM SERIAL INTERFACE
+
 M_SRWRT         .EQU    33H     ;WRITE CHAR TO SERIAL INTERFACE
+
 M_SRCTL         .EQU    36H     ;SERIAL INTERFACE CONTROL FUNCTION
+
 ;
+
 ;  I/O ERROR CODES
+
 ;
+
 E_NOERR         .EQU    0       ;NO ERROR
+
 E_UNKERR        .EQU    10H     ;UNKNOWN ERROR
+
+
 
 E_PRMERR        .EQU    20H     ;PARAMETER ERROR
 
+
+
 E_UNTRDY        .EQU    30H     ;UNIT NOT READY
+
 E_WTPROT        .EQU    31H     ;WRITE PROTECTED MEDIA
+
 E_DSKCHG        .EQU    32H     ;VOLUMN HAD BEEN CHANGED
 
+
+
 E_ADCOMP        .EQU    40H     ;ADDRESS COMPARE ERROR
+
 E_URDTER        .EQU    41H     ;UNRECOVERABLE DATA ERROR
 
+
+
 E_RTZERR        .EQU    50H     ;ERROR DURING RTZ OPERATION
+
 E_LSTDAT        .EQU    51H     ;LOST DATA
+
 E_WRTFLT        .EQU    52H     ;WRITE FAULT
+
 E_CNTERR        .EQU    53H     ;CONTROLLER HARDWARE ERROR
+
 ;
+
 ;  THE DISK REQUEST BLOCK
+
 ;
+
 C_DRQADH  .EQU       9H
+
 C_DRQADL  .EQU       8H
+
 C_DRQADR  .EQU       8H
+
 C_DRQASY  .EQU       5H
+
 C_DRQCNT  .EQU      0AH
+
 C_DRQDDN  .EQU       4H
+
 C_DRQFLG  .EQU       5H
+
 C_DRQFMT  .EQU       4H
+
 C_DRQMAP  .EQU       4H
+
 C_DRQMSR  .EQU       5H
+
 C_DRQNDA  .EQU       5H
+
 C_DRQNMA  .EQU       5H
+
 C_DRQNRC  .EQU       5H
+
 C_DRQSEC  .EQU       3H
+
 C_DRQSSZ  .EQU       4H
+
 C_DRQS0   .EQU       6H
+
 C_DRQTRK  .EQU       1H
+
 C_DRQUNT  .EQU       0H
+
 MAPCPM          .EQU    10H     ;CP/M 1.4 MAPPING
+
 MAPUCSD         .EQU    20H     ;UCSD STANDARD MAPPING
+
 MAPOPT          .EQU    30H     ;OPTIMIZED FORMAT MAPPING
+
 RQSIZ1          .EQU    00H     ;128 BYTES PR SECTOR
+
 RQSIZ2          .EQU    01H     ;256 BYTES PER SECTOR
+
 RQSIZ5          .EQU    02H     ;512 BYTES PER SECTOR
 
+
+
 S_DRQADH  .EQU       0H
+
 S_DRQADL  .EQU       0H
+
 S_DRQADR  .EQU       0H
+
 S_DRQASY  .EQU       7H
+
 S_DRQCNT  .EQU       0H
+
 S_DRQDDN  .EQU       2H
+
 S_DRQFLG  .EQU       0H
+
 S_DRQFMT  .EQU       0H
+
 S_DRQMAP  .EQU       4H
+
 S_DRQMSR  .EQU       3H
+
 S_DRQNDA  .EQU       4H
+
 S_DRQNMA  .EQU       5H
+
 S_DRQNRC  .EQU       6H
+
 S_DRQSEC  .EQU       0H
+
 S_DRQSSZ  .EQU       0H
+
 S_DRQS0   .EQU       0H
+
 S_DRQTRK  .EQU       0H
+
 S_DRQUNT  .EQU       0H
+
 V_DRQADH  .EQU  0000FFH
+
 V_DRQADL  .EQU  0000FFH
+
 V_DRQADR  .EQU  0000FFH
+
 V_DRQASY  .EQU  000080H
+
 V_DRQCNT  .EQU  0000FFH
+
 V_DRQDDN  .EQU       4H
+
 V_DRQFLG  .EQU  0000FFH
+
 V_DRQFMT  .EQU  0000FFH
+
 V_DRQMAP  .EQU      30H
+
 V_DRQMSR  .EQU      08H
+
 V_DRQNDA  .EQU      10H
+
 V_DRQNMA  .EQU      20H
+
 V_DRQNRC  .EQU  000040H
+
 V_DRQSEC  .EQU  0000FFH
+
 V_DRQSSZ  .EQU       3H
+
 V_DRQS0   .EQU  0000FFH
+
 V_DRQTRK  .EQU  0000FFH
+
 V_DRQUNT  .EQU  0000FFH
-        .IF     0
+
+	.IF     0
+
 Y_DRQADH  .EQU      10H
+
 Y_DRQADL  .EQU      10H 
+
 Y_DRQADR  .EQU      10H 
+
 Y_DRQASY  .EQU       1H 
+
 Y_DRQCNT  .EQU      10H 
+
 Y_DRQDDN  .EQU       1H 
+
 Y_DRQFLG  .EQU      10H 
+
 Y_DRQFMT  .EQU      10H 
+
 Y_DRQMAP  .EQU       2H 
+
 Y_DRQMSR  .EQU       1H 
+
 Y_DRQNDA  .EQU       1H 
+
 Y_DRQNMA  .EQU       1H 
+
 Y_DRQNRC  .EQU       1H 
+
 Y_DRQSEC  .EQU      10H 
+
 Y_DRQSSZ  .EQU       2H 
+
 Y_DRQS0   .EQU      10H 
+
 Y_DRQTRK  .EQU      10H 
+
 Y_DRQUNT  .EQU      10H 
-        .ENDC
+
+	.ENDC
+
 ;
+
 ;  MACRO MTRREQ - MAKE MONITOR REQUEST
+
 ;
+
 ;       PARAMETER - IF PRESENT, IS CONSTANT SPECIFYING THE REQUEST.
+
 ;                   IF ABSENT, REQUEST NUMBER IS TAKEN FROM THE A REGISTER.
+
 ;
-        .MACRO  MTRREQ
-        .IF     "%1"<>""
-        LD      A,%1
-        .ENDC
-        RST     28H
-        .ENDM
+
+	.MACRO  MTRREQ
+
+	.IF     "%1"<>""
+
+	LD      A,%1
+
+	.ENDC
+
+	RST     28H
+
+	.ENDM
+
 ;
+
 ;  MACRO ASSUME - CHECK ASSEMBLY-TIME ASSUMPTION
+
 ;
-        .MACRO  ASSUME
-        .ENDM
+
+	.MACRO  ASSUME
+
+	.ENDM
+
 ;
+
 ;  MACRO FALLTHRU - MAKE SURE THAT FOLLOWING REALLY IS THERE
+
 ;
-        .MACRO  FALLTHRU
-        .ENDM
+
+	.MACRO  FALLTHRU
+
+	.ENDM
+
 ;
+
 ;  MACRO DEF_CH - DEFINE SYMBOLS FOR ASCII CONTROL CHARACTERS
+
 ;
-        .MACRO  DEF_CH
+
+	.MACRO  DEF_CH
+
 CH_NUL  .EQU    00H
+
 CH_SOH  .EQU    01H
+
 CH_STX  .EQU    02H
+
 CH_ETX  .EQU    03H
+
 CH_EOT  .EQU    04H
+
 CH_ENQ  .EQU    05H
+
 CH_ACK  .EQU    06H
+
 CH_BEL  .EQU    07H
+
 CH_BS   .EQU    08H
+
 CH_HT   .EQU    09H
+
 CH_LF   .EQU    0AH
+
 CH_VT   .EQU    0BH
+
 CH_FF   .EQU    0CH
+
 CH_CR   .EQU    0DH
+
 CH_SO   .EQU    0EH
+
 CH_SI   .EQU    0FH
+
 CH_DLE  .EQU    10H
+
 CH_DC1  .EQU    11H
+
 CH_DC2  .EQU    12H
+
 CH_DC3  .EQU    13H
+
 CH_DC4  .EQU    14H
+
 CH_NAK  .EQU    15H
+
 CH_SYN  .EQU    16H
+
 CH_ETB  .EQU    17H
+
 CH_CAN  .EQU    18H
+
 CH_EM   .EQU    19H
+
 CH_SUB  .EQU    1AH
+
 CH_ESC  .EQU    1BH
+
 CH_FS   .EQU    1CH
+
 CH_GS   .EQU    1DH
+
 CH_RS   .EQU    1EH
+
 CH_US   .EQU    1FH
+
+
 
 CH_SP   .EQU    20H
 
-CH_DEL  .EQU    7FH
-        .ENDM
 
-        .LIST
+
+CH_DEL  .EQU    7FH
+
+	.ENDM
+
+
+
+	.LIST
+
+
 
