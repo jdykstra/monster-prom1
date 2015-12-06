@@ -1,0 +1,1375 @@
+        .ABSOLUTE
+        .PROC   DSKCTL
+
+        .ORG    0000H
+
+LISTINC .EQU    0
+        .INCLUDE ASMINC.TEXT
+        .INCLUDE DUTEXT.TEXT
+
+        DEF_DSK                 DEFINE DISK SYMBOLS
+
+
+
+
+;**    VERSION   E6
+
+;**     Change History
+;
+;       11-Apr-98 - E6:  Updated macro definitions in formatting code
+;                   to follow P-System syntax.  Apparently this]
+;                   code has never been assembled since I was
+;                   doing assemblies on the mainframe.
+;
+
+        .PAGE
+;*        ASSEMBLY PARAMETERS 
+;
+;
+DEBUG   .EQU    0               ; DEBUG OPTIONS
+FORMAT  .EQU    0               ; DO NOT ASSEMBLE TRACK FORMAT CODE
+FMTIBM  .EQU    0               ; DO NOT FORMAT 3740 SECTORS
+FMTDD   .EQU    1               ; DO FORMAT DOUBLE-DENSITY SECTORS
+MAXUNIT .EQU    1               ; MAXIMUM UNIT NUMBER
+
+KEY_TBL .EQU    0C00H-0800H     ; PUT KEYBOARD TABLE AT 0C00H
+
+
+
+;*        INTERNAL SYMBOLS
+;
+;
+MAXTRK  .EQU    76.             ; MAXIMUM TRACK NUMBER
+MAXRETRY .EQU    15.             ; MAXIMUM NUMBER OF RETRYS 
+WINDOW  .EQU    0400H           ; ADDRESS OF MEMORY WINDOW
+STKBASE .EQU    03FFH           ; BASE OF PROCESSOR STACK
+STKSIZE .EQU    10.             ; MAXIMUM SIZE OF STACK
+CMDCODE .EQU    WINDOW          ; BYTE CONTAING HOST COMMAND
+ERRCODE .EQU    CMDCODE+1       ; ERROR CODE RETURNED TO HOST
+REQBLK  .EQU    WINDOW+2        ; START OF REQUEST BLOCK
+DATBUF  .EQU    WINDOW+10H      ; DQTA BUFFER
+TICK    .EQU    100.            ; RESOLUTION OF DELAY SUBROUTINE (US) 
+
+
+
+;*        TEMPORARY DEFINITIONS
+;
+;
+P_INT   .EQU    0038H           ; MASKABLE INTERRUPT ENTRY ADR
+E_BADDEN .EQU    60H             ; USER SPECIFIED WRONG DISK DENSITY
+RDSEC   .EQU    03H             ; COMMAND CODE FOR A READ
+
+
+
+;*        HARDWARE CHARACTERISTICS
+;
+;  THE FOLLOWING CONSTANTS DESCRIBE THE TIMING ATTRIBUTES OF THE
+;  CDC/MPI 9406 DISK DRIVE.  ALL TIMINGS ARE IN MICROSECONDS, UNLESS
+;  OTHERWISE NOTED.
+;  (TICKS ARE NOMINALLY 100 US. EACH.)
+;
+HDLDTIM .EQU    700.          ; HEAD LOAD DELAY TO VALID DATA (CDC SAYS 40 MS)
+                              ; EXPRESSED IN TICKS
+AFWTTIM .EQU    1000.           ; DELAY AFTER WRITE TO SEEK 
+STEPTIM .EQU    3000.           ; STEP PULSE INTERVAL
+AFSKTIM .EQU    20000.          ; HEAD SETTLE AFTER STEP
+
+RECTIM  .EQU    833.          ; CONTROLLER PLL RECOVERY TIME
+                              ; EXPRESSED IN TICKS
+
+
+
+;*      MOTOR CONTROL TIMINGS
+;
+;
+INDEXD  .EQU    1000H           ; DELAY UNTIL UNIT DETECTS INDEX PULSES (TICKS)
+TURN_ON  .EQU   10000.-INDEXD   ; TURN-ON DELAY IN TICKS
+
+
+;*        UNIT TABLE
+;
+;  THESE SYMBOLS DEFINE BYTE OFFSETS WITHIN A UNIT TABLE ENTRY.
+;
+U_CURTRK .EQU    0               ; CURRENT TRACK POSITION
+
+LE_UNT  .EQU    2               ; LENGTH OF EACH TABLE ENTRY
+
+
+
+;*        SECTOR SIZE TABLE
+;
+;
+C_SZSTK .EQU    0               ; SECTORS PER TRACK (DOUBLE-DENSITY)
+
+LE_SZ   .EQU    1
+
+
+
+;*        FORMAT TABLE
+;
+;
+C_FMTINT .EQU    0               ; BYTE CONTAINING INTERLACE
+C_FMTTKO .EQU    1               ; BYTE CONTAINING TRACK OFFSET
+C_FMTSPC .EQU    2               ; CONTAINS SECTORS PER BYTE
+
+LE_FMT  .EQU    4               ; LENGTH OF AN ENTRY
+        .PAGE
+
+        .IF     FORMAT
+
+;*        MACRO SECTORS
+;
+;
+        .MACRO   SECTORS
+        LD      A,(REQBLK+C_DRQSEC)
+        LD      D,A
+        LD      E,%1
+        .ENDM
+
+
+
+;*        MACRO BLOCK
+;
+;
+;   First parameter is COUNT
+;   Second parameter is VALUE
+        .MACRO  BLOCK
+        LD      B,%1
+$1      IN      A,(P_BS+V_BSWAT)
+        LD      A,%2
+        XOR     0FFH
+        OUT     (P_DT),A
+        DJNZ    $1
+        .ENDM
+
+
+
+;*        MACRO REPEAT
+;
+;
+        .MACRO  REPEAT
+        DEC     E
+        JP      NZ,%1
+        .ENDM
+
+
+
+;*        MACRO ENDING
+;
+;
+        .MACRO  ENDING
+        LD      HL,0
+$1      IN      A,(P_BS+V_BSWAT)
+        LD      A,%1
+        XOR     0FFH
+        OUT     (P_DT),A
+        INC     HL
+        JR      $1
+        .ENDM
+
+
+
+;*        MACRO ADRMARK
+;
+;
+        .MACRO  ADRMARK
+        IN      A,(P_BS+V_BSWAT)
+        LD      A,0FEH
+        XOR     0FFH
+        OUT     (P_DT),A
+        .ENDM
+
+
+
+;*        MACRO INDMARK
+;
+;
+        .MACRO  INDMARK
+        IN      A,(P_BS+V_BSWAT)
+        LD      A,0FCH
+        XOR     0FFH
+        OUT     (P_DT),A
+        .ENDM
+
+
+
+;*        MACRO DATMARK
+;
+;
+        .MACRO  DATMARK
+        IN      A,(P_BS+V_BSWAT)
+        LD      A,0FBH
+        XOR     0FFH
+        OUT     (P_DT),A
+        .ENDM
+
+
+
+;*        MACRO CRCMAC
+;
+;
+        .MACRO  CRCMAC
+        IN      A,(P_BS+V_BSWAT)
+        LD      A,0F7H
+        XOR     0FFH
+        OUT     (P_DT),A
+        .ENDM
+
+
+
+;*        MACRO VALUE
+;
+;
+
+        .MACRO  VALUE
+        IN      A,(P_BS+V_BSWAT)
+        LD      A,%1
+        XOR     0FFH
+        OUT     (P_DT),A
+        .ENDM
+
+
+
+;*        MACRO    TRACK
+;
+;
+        .MACRO  TRACK
+        IN      A,(P_BS+V_BSWAT)
+        IN      A,(P_TK)
+        OUT     (P_DT),A
+        .ENDM
+
+
+
+;*        MACRO SEC 
+;
+;
+        .MACRO  SEC
+        IN      A,(P_BS+V_BSWAT)
+        LD      A,D 
+        XOR     0FFH
+        OUT     (P_DT),A
+        INC     D
+        .ENDM
+
+        .ENDC
+        .PAGE
+;*        INITIALIZATION
+;
+;  AFTER THE FIRMWARE IS FIRST LOADED, OR ANY TIME IT APPEARS
+;  ADVISABLE, A RESET FUNCTION WILL BE ISSUED TO THE CONTROLLER.
+;  THIS RESETS THE PROCESSOR, WHICH PROCEEDS TO BEGIN
+;  EXECUTION HERE.
+;
+        .ORG    P_RESET
+
+        LD      SP,STKBASE      ; SET STACK POINTER
+
+        IM      1                     ; SET INTERRUPT MODE 1
+
+        ASSUME  E_NOERR,EQ,0
+        XOR     A               ; CLEAR ERROR CODE
+        LD      (ERRCODE),A
+;
+;  EXECUTE RTZ OPERATIONS ON ALL UNITS. 
+;
+        LD      (REQBLK+C_DRQUNT),A  ;START RTZ WITH UNIT ZERO
+
+        DEC     A               ; SET OLDUNIT TO IMPOSSIBLE VALUE
+        LD      (OLDUNIT),A
+
+INITLP
+        CALL    SELUNIT         ; SELECT UNIT
+        CALL    RTZ             ; RECALIBRATE UNIT
+;
+;  LOOP IF THERE ARE MORE UNITS CONFIGURED IN THE SYSTEM.
+;
+        LD      HL,REQBLK+C_DRQUNT ; ADDRESS OF UNIT NUMBER 
+        INC     (HL)            ; BUMP UNIT NUMBER
+        LD      A,(HL)          ; GET NEW UNIT NUMBER
+        CP      MAXUNIT+1
+        JR      C,INITLP        ; LOOP IF MORE TO GO
+
+        JP      WAITCMD         ; GO WAIT FOR THE FIRST COMMAND
+        .PAGE
+;*        SECTOR SIZE TABLE
+;
+;  THE ENTRIES IN THIS TABLE ARE INDEXED BY THE SECTOR
+;  SIZE BITS IN THE FORMAT CODE.
+;
+SIZTBL
+        .BYTE   52.+1            ; SECTORS/TRACK (DOUBLE DENSITY)
+
+        .BYTE   26.+1
+
+        .BYTE   16.+1
+
+
+
+;*        MAPPING TABLE
+;
+;  THE ENTRIES IN THIS TABLE CONTAIN INFO FOR ADVANCING THIS
+;  DISK ADDRESS.  THEY ARE INDEXED BY THE MAPPING CODE PART 
+;  OF THE DISK FORMAT BYTE.
+;
+MAPTBL
+        .BYTE   0               ; NULL ADVANCE
+        .BYTE   0
+        .BYTE   0
+        .BYTE   0
+
+        .BYTE   6               ; CP/M 1.4 FORMAT 
+        .BYTE   0-2             ; SHOULD BE 0FE(16)
+        .BYTE   26.             ; SECTORS PER CYLINDER
+        .BYTE   0
+
+        .BYTE   2               ; UCSD STANDARD (DEC RT-11) 
+        .BYTE   6-2 
+        .BYTE   26.             ; SECTORS PER CYLINDER
+        .BYTE   0
+
+        .BYTE   2               ; OPTIMIZED
+        .BYTE   2-2 
+        .BYTE   32.             ; SECTORS PER CYLINDER
+        .BYTE   0
+        .PAGE
+;*        HOST INTERRUPT HANDLER
+;
+;  THE HOST SYSTEM INTERRUPTS US WHEN A NEW COMMAND HAS BEEN PUT INTO
+;  THE COMMON MEMORY.
+;
+        .ORG    P_INT
+
+        IN      A,(P_BS+V_BSCLI) ; CLEAR INTERRUPT FLAG
+        POP     HL              ; GET AND DISCARD INTERRUPT P ADDRESS
+        JP      COMMAND         ; GO PROCESS COMMAND
+        .PAGE
+;*        SUBROUTINE GETSTAT - GET UPDATED CHIP STATUS
+;
+;         ENTRY - NO PARAMETERS
+;
+;         EXIT - CHIP STATUS IN A REGISTER
+;                NO OTHER REGISTERS USED
+;
+GETSTAT
+        LD      A,SCOFRCIN      ; UPDATE STATUS COMMAND
+        XOR     0FFH            ; INVERT FOR BUS
+        OUT     (P_SC),A
+
+        EX      (SP),HL         ; DELAY WHILE CHIP UPDATES STATUS
+        EX      (SP),HL
+        EX      (SP),HL
+        EX      (SP),HL
+
+        IN      A,(P_SC)        ; INPUT STATUS BYTE
+        XOR     0FFH            ; INVERT FOR BUS
+        .IF     DEBUG
+        LD      (DBGSTAT),A
+        .ENDC
+        RET
+        .PAGE
+;*        SUBROUTINE FUNC - ISSUE CHIP FUNCTION
+;
+;         ENTRY - COMMAND IN B REGISTER 
+;
+;         EXIT - THROUGH NMI HANDLER
+;        A CONTAINS NEW STATUS
+;        HL DESTROYED, ALL OTHERS PRESERVED
+;
+FUNC
+        POP     HL              ; PUT RETURN ADDRESS IN HL
+        LD      (FUNRET),HL     ; SAVE RETURN ADDRESS
+
+        IN      A,(P_TK)        ; READ CURRENT TRACK ADDRESS
+        OUT     (P_DT),A        ; DO NOT MOVE POSITIONER
+
+        LD      A,B             ; MOVE COMMAND TO A
+        .IF      DEBUG
+        LD      (DBGFUNC),A     ; SAVE FUNCTION
+        .ENDC
+        XOR     0FFH            ; INVERT FOR BUS
+        OUT     (P_SC),A
+
+INTHNG
+        JR      INTHNG          ; HANG WAITING FOR INTERRUPT
+        .PAGE
+;*        NON-MASKABLE INTERRUPT HANDLER
+;
+;  WE COME HERE AFTER THE CONTROLLER CHIP HAS FINISHED A FUNCTION
+;  AND GENERATED AN INTERRUPT.
+;  THE CODE THAT STARTED THE FUNCTION MUST SET UP FUNRET PROPERLY
+;  FIRST. 
+;
+        .ORG    P_NMI
+
+        POP     HL              ; DISCARD INTERRUPT ADDRESS 
+
+        IN      A,(P_SC)        ; GET CHIP STATUS 
+        XOR     0FFH            ; INVERT FOR BUS
+        LD      (CHIPSTAT),A    ; SAVE CHIP STATUS
+RETM1   JP      $-$             ; RETURN ADDRESS INSERTED HERE
+
+FUNRET  .EQU    RETM1+1         ; PLACE TO PUT ADDRESS
+        .PAGE
+;*        MAIN COMMAND PROCESSOR
+;
+;
+WAITCMD
+        EI                      ; ENABLE HOST (MASKABLE) INTERRUPT
+        
+        HALT                    ; WAIT FOR INTERRUPT
+
+
+
+;*      COMMAND HANDLER
+;
+;  COME HERE AFTER HOST WAKES 
+;  UP THE CONTROLLER.
+;
+COMMAND
+        LD      A,(CMDCODE)     ; GET COMMAND CODE
+        ADD     A,A             ; MULTIPLY BY 2
+        LD      E,A             ; MOVE TO E
+        LD      D,0             ; CLEAR D TO MAKE TABLE OFFSET
+        LD      HL,CMDTBL       ; COMMAND TABLE ADDRESS
+        ADD     HL,DE           ; COMPUTE ADDRESS OF ENTRY
+        LD      E,(HL)          ; GET LOW ENTRY BYTE
+        INC     HL              ; BUMP ADDRESS
+        LD      D,(HL)          ; GET HIGH ENTRY BYTE
+        EX      DE,HL           ; MOVE ENTRY TO HL
+
+        LD      A,0             ; ASSUME NO ERRORS WILL OCCUR
+        LD      (ERRCODE),A
+
+        JP      (HL)            ; GO TO COMMAND PROCESSOR
+
+
+
+;*        COMMAND TABLE
+;
+;
+CMDTBL
+        .WORD   WAITCMD         ; NULL COMMAND
+        .WORD   SEEKONLY        ; SEEK ONLY COMMAND PROCESSOR
+        .WORD   WRITE           ; WRITE COMMAND PROCESSOR
+        .WORD   READ            ; READ COMMAND PROCESSOR
+        .WORD   FMTCMD          ; FORMAT COMMAND PROCESSOR
+        .PAGE
+;*        SEEK ONLY COMMAND PROCESSOR
+;
+;
+SEEKONLY
+        CALL    SELUNIT         ; SELECT UNIT
+        CALL    SEEK            ; SEEK UNIT IF NECESSARY
+        JP      WAITCMD
+        .PAGE
+;*        READ COMMAND PROCESSOR
+;
+;
+READ
+        CALL    SELUNIT         ; SELECT UNIT
+        CALL    SEEK            ; SEEK UNIT IF NECESSARY
+        JR      NZ,RDSKERR      ; JUMP IF ERRORS ON SEEK
+
+        CALL    READSEC         ; READ SECTOR
+        JR      NZ,RDSKERR      ; JUMP IF ERROR DETECTED
+
+        CALL    ADVADR          ; ADVANCE DISK ADDRESS
+
+RDSKERR
+        JP      WAITCMD
+        .PAGE
+;*        WRITE COMMAND PROCESSOR
+;
+;
+WRITE
+        CALL    SELUNIT         ; SELECT UNIT
+        CALL    SEEK            ; SEEK UNIT IF NECESSARY
+        JR      NZ,WTSKERR      ; JUMP IF ERRORS ON SEEK
+
+        CALL    WRITSEC         ; WRITE SECTOR
+        JR      NZ,RDSKERR      ; JUMP IF ERROR DETECTED
+
+        CALL    ADVADR          ; ADVANCE DISK ADDRESS
+
+WTSKERR
+        JP      WAITCMD
+
+
+
+        .PAGE
+;*        FORMAT COMMAND PROCESSOR
+;
+;
+FMTCMD
+
+        .IF     FORMAT=0
+        LD      A,E_PRMERR      ; ILLEGAL COMMAND 
+        LD      (ERRCODE),A
+        JP      WAITCMD
+
+        .ELSE
+
+        CALL    SELUNIT         ; SELECT UNIT
+;
+;  BEGIN FORMATTING AT TRACK ZERO.
+;
+        LD      A,0             ; START AT TRACK 0
+        LD      (REQBLK+C_DRQTRK),A
+;
+;  TOP OF THE CYLINDER LOOP.  FORMAT ONE CYLINDER 
+;
+FMTLOOP
+        LD      A,1             ; START FORMATTING WITH SECTOR 1
+        LD      (REQBLK+C_DRQSEC),A
+
+        CALL    SEEK            ; SEEK TO PROPER TRACK
+        JR      NZ,FMTSKERR     ; JUMP IF ERROR ON SEEK
+
+        CALL    FMTTRK          ; FORMAT TRACK
+        JR      NZ,FMTSKERR     ; JUMP IF ERROR DETECTED
+
+        .IF      FMTDD
+
+        LD      A,17.           ; SECOND TRACK STARTS WITH SECTOR 17D
+        LD      (REQBLK+C_DRQSEC),A
+
+        CALL    SEEK            ; SET CONTROLS FOR OTHER SIDE
+        JR      NZ,FMTSKERR     ; JUMP ON ERROR
+
+        CALL    FMTTRK          ; FORMAT OTHER TRACK
+        JR      NZ,FMTSKERR     ; JUMP ON ERROR FORMATTING TRACK
+
+        .ENDC
+
+
+;
+;  INCREMENT THE TRACK NUMBER, AND SEE IF THERE ARE MORE
+;  TO GO. 
+;
+        LD      A,(REQBLK+C_DRQTRK) ; GET TRACK JUST FORMATTED
+        INC     A
+        LD      (REQBLK+C_DRQTRK),A ; STORE UPDATED TRACK NUMBER
+
+        CP      MAXTRK+1        ; SEE IF MORE TO GO
+        JR      NZ,FMTLOOP      ; LOOP IF MORE TRACKS TO FORMAT
+
+FMTSKERR
+        JP      WAITCMD
+
+        .ENDC
+        .PAGE
+;*        SUBROUTINE SELUNIT - SELECT DISK UNIT
+;
+;
+SELUNIT
+        IN      A,(P_BS)
+        BIT     S_BSITEX,A      ; SEE IF DISK MOTOR IS RUNNING
+        JR      Z,CHKUNN        ; JUMP IF MOTOR RUNNING
+
+        IN      A,(P_BS+V_BSSTT) ; START THE SELECT TIMER
+        
+        LD      DE,INDEXD        ; DELAY UNTIL UNIT DETECTS INDEX PULSE
+        CALL    DELAY
+        
+        LD      A,(CMDCODE)     ; GET CURRENT COMMAND
+        CP      RDSEC
+        JR      Z,CHKUNN        ; DON'T WAIT IF DOING READ
+        
+        LD      DE,TURN_ON      ; DELAY UNTIL MOTOR UP TO SPEED
+        CALL    DELAY
+;
+;  SEE IF WE ARE GOING TO USE A DIFFERENT DISK UNIT THAN WE DID IN THE
+;  LAST REQUEST.
+;
+CHKUNN
+        LD      A,(REQBLK+C_DRQUNT) ; GET NEW UNIT NUMBER
+        LD      B,A             ; MOVE NEW UNIT TO B
+        LD      A,(OLDUNIT)     ; GET OLD UNIT NUMBER
+        CP      B               ; COMPARE NEW TO OLD
+        JR      Z,RSTTIM        ; JUMP IF NO CHANGE IN UNIT 
+;
+;  SINCE WE ARE CHANGING UNITS, FIRST UNLOAD THE
+;  HEAD ON THE UNIT WE ARE LEAVING.
+;
+        .IF     0               ; BUG KLUDGE *******
+
+        LD      B,SCOSEEK       ; DO A NULL SEEK TO UNLOAD
+        CALL    FUNC
+
+        .ENDC
+;
+;  SET IX TO POINT TO THE APPROPRIATE UNIT TABLE ENTRY.
+;
+        LD      A,(REQBLK+C_DRQUNT) ; GET UNIT NUMBER
+        ASSUME  LE_UNT,EQ,2
+        LD      C,A             ; MOVE TO BOTTOM OF BC
+        SLA     C               ; MULTIPLY BY TWO 
+        LD      B,0             ; CLEAR TOP OF BC 
+        LD      IX,UNTTBL       ; ADDRESS OF TABLE
+        ADD     IX,BC           ; CREATE ENTRY ADDRESS
+;
+;  CHANGE THE UNIT SELECT, AND REMEMBER OUR NEW UNIT NUMBER.
+;
+        LD      (OLDUNIT),A
+
+        OR      V_BSOSEL        ; CREATE A SELECT COMMAND
+        OUT     (P_BS),A        ; ISSUE IT
+
+RSTTIM
+        IN      A,(P_BS+V_BSSTT) ; RE-START THE SELECT TIMER
+        RET
+        .PAGE
+;*        SUBROUTINE SEEK - SEEK DISK POSITIONER
+;
+;         ENTRY - UNIT SELECTED
+;
+;         EXIT - Z FLAG SET IF NO ERROR 
+;
+;  NOTE - THIS ROUTINE ALSO MAKES SURE THE HEAD IS LOADED,
+;  AND SETS UP PRECOMPENSATION, SIDE SELECT, AND DENSITY SELECT.
+;
+SEEK
+        CALL    GETSTAT         ; GET CURRENT UNIT STATUS
+        BIT     S_SCINRD,A
+        JR      Z,SKCHKHD       ; JUMP IF UNIT READY
+
+        LD      A,E_UNTRDY      ; SET ERROR CODE
+SKERREX
+        LD      (ERRCODE),A
+        AND     A               ; CLEAR Z FLAG TO INDICATE ERROR
+        RET
+
+
+
+BADTRKN
+        LD      A,E_PRMERR      ; ILLEGAL PARAMETER ERROR
+SKERREX2 JR      SKERREX
+
+
+
+;
+;  SEE IF THE HEAD IS ALREADY LOADED
+;
+SKCHKHD
+        BIT     S_SCIHDL,A
+        JR      NZ,HEADLD       ; JUMP IF HEAD ALREADY LOADED
+;
+;  LOAD THE HEAD, AND WAIT UNTIL IT STABILIZES.
+;  NOTE THAT THIS WAIT TIME COULD BE OVERLAPPED WITH THE SEEK,
+;  BUT IS NOT FOR SIMPLICITY'S SAKE.
+;
+        LD      B,SCOSEEK+V_SCOHDL ; LOAD HEAD (NULL SEEK)
+        CALL    FUNC
+
+        LD      DE,HDLDTIM      ; WAIT FOR HEADS TO LOAD
+        CALL    DELAY
+;
+;  CHECK TO MAKE SURE THAT THE DISK TYPE (AS INDICATED BY THE POSITION OF
+;  ITS INDEX HOLE) MATCHES THE TYPE SPECIFIED IN THE REQUEST.
+;
+HEADLD
+        LD      A,(REQBLK+C_DRQFMT) ; GET REQUEST FORMAT BYTE
+        LD      D,A 
+        IN      A,(P_BS)        ; GET CONTROLLER BOARD STATUS
+        BIT     S_BSIDTY,A
+        JR      NZ,SKISSS        ; JUMP IF SINGLE-DENSITY
+
+        BIT     S_DRQDDN,D
+        JR      NZ,SKDENOK      ; JUMP IF REQUEST SPECIFIES DOUBLE DENSITY
+
+        JR      SKDENERR
+
+
+
+SKISSS
+        BIT     S_DRQDDN,D
+        JR      Z,SKDENOK       ; JUMP IF REQUEST IS SINGLE-DENSITY
+
+SKDENERR
+        LD      A,E_BADDEN      ; DENSITY MISMATCH ERROR
+        JR      SKERREX2
+
+
+
+;
+;  COMPUTE THE OFFSET BETWEEN WHERE THE HEADS ARE RIGHT NOW,
+;  AND THE TRACK ADDRESS IN THE REQUEST.
+;
+SKDENOK
+        LD      A,(REQBLK+C_DRQTRK) ; REQUESTED TRACK ADDRESS
+        CP      MAXTRK+1        ; MAKE SURE TRACK NUMBER IS LEGAL
+        JP      NC,BADTRKN      ; JUMP IF ILLEGAL TRACK NUMBER
+
+        SUB     (IX+U_CURTRK)   ; SUBTRACT CURRENT POSITION 
+        JR      Z,SEEKDONE      ; JUMP IF NO SEEK NEEDED
+;
+;  TO PERFORM A SEEK, FIRST WE WAIT AWHILE TO MAKE SURE THAT
+;  THE PROPER AFTER-WRITE TIME HAS EXPIRED.  NOTE THAT IT
+;  PROBABLY ALREADY HAS, BUT FOR SIMPLICITY WE WAIT ANYWAY. 
+;
+        PUSH    AF              ; SAVE FLAGS AND OFFSET
+        LD      DE,AFWTTIM/TICK ; DELAY AFTER WRITE
+        CALL    DELAY
+        POP     AF
+;
+;  SET THE SEEK DIRECTION ACCORDING TO THE CARRY FLAG SET ABOVE.
+;
+        JR      C,SEEKOUT       ; JUMP IF SEEK DIRECTION IS OUT
+
+        LD      L,A             ; SAVE OFFSET COUNT IN L
+        LD      A,(REQBLK+C_DRQUNT) ; CREATE A SEEK INWARD COMMAND
+        OR      V_BSOSID+V_BSOSEL        
+        OUT     (P_BS),A        ; SEND COMMAND
+
+        JR      SEEKSTEP
+
+
+
+;*
+;  SEEK IS OUTWARD, SO MAKE THE OFFSET POSITIVE
+;
+SEEKOUT
+        NEG                     ; MAKE OFFSET POSITIVE
+        LD      L,A             ; SAVE OFFSET IN L
+
+        LD      A,(REQBLK+C_DRQUNT) ; CREATE A SEEK OUTWARD COMMAND
+        OR      V_BSOSEL        
+        OUT     (P_BS),A        ; SEND COMMAND
+;
+;  LOOP FOR EACH TRACK STEPPED OVER, UNTIL THE DESIRED LOCATION
+;  IS REACHED.
+;
+SEEKSTEP
+        IN      A,(P_BS+V_BSSTP+V_BSSTT) ; STEP THE POSITIONER
+        LD      DE,STEPTIM/TICK ; WAIT FOR STEP
+        CALL    DELAY
+
+        DEC     L               ; DECREMENT TRACK OFFSET
+        JR      NZ,SEEKSTEP     ; LOOP IF MORE TO GO
+;
+;  WAIT FOR THE HEADS TO SETTLE AFTER THE SEEK.
+;
+        LD      DE,AFSKTIM/TICK ; WAIT FOR HEADS TO SETTLE
+        CALL    DELAY
+
+;
+;  SET IY TO POINT TO THE APPROPRIATE SIZE TABLE ENTRY.
+;
+SEEKDONE
+        LD      A,(REQBLK+C_DRQTRK) ; GET TRACK NUMBER
+        LD      (IX+U_CURTRK),A ; SAVE IN UNIT TABLE
+        XOR     0FFH            ; INVERT FOR BUS
+        OUT     (P_TK),A        ; SEND TO CONTROLLER CHIP
+
+        LD      A,(REQBLK+C_DRQSSZ) ; GET FORMAT CODE
+        AND     V_DRQSSZ        ; SAVE ONLY THE SIZE CODE
+        ASSUME  LE_SZ,EQ,1
+        LD      C,A             ; MOVE TO LOW BC
+        LD      B,0             ; CLEAR TOP OF BC 
+        LD      IY,SIZTBL       ; ADR OF START OF TABLE
+        ADD     IY,BC           ; COMPUTE ADDRESS OF ENTRY
+;
+;  SEEK IS COMPLETE, SO SET THE CONTROLS FOR UP-COMMING DATA
+;  TRANSFERS.
+;  THE METHOD WE USE IS TO PUT VARIOUS PARTS OF THE CONTROL BYTE
+;  INTO VARIOUS REGISTERS, AND THEN COMBINE THEM AT THE END.
+;  FIRST, SEE WHICH SIDE OF THE DISK (WHICH OF TWO TRACKS) WE
+;  ARE ACCESSING.
+;
+        LD      E,V_BSOSEL              ; ASSUME SIDE 0
+        LD      A,(REQBLK+C_DRQSEC) ; GET SECTOR ADDRESS
+        SUB     (IY+C_SZSTK)    ; COMPARE TO SECTORS PER TRACK
+        JR      C,CTL1          ; JUMP IF ON SIDE 0
+
+        LD      E,V_BSOSID+V_BSOSEL         ; SELECT SIDE 1
+;
+;  SEE IF DOUBLE-DENSITY, AND IF SO, SET THE WRITE PRECOMPENSATION
+;  ACCORDING TO THE CURRENT TRACK NUMBER
+;
+CTL1
+        LD      D,0             ; ASSUME SINGLE-DENSITY
+
+        LD      A,(REQBLK+C_DRQFMT) ; GET THE REQUEST FORMAT BYTE
+        BIT     S_DRQDDN,A
+        JR      Z,CTL2          ; JUMP IF NOT DOUBLE DENSITY
+
+        LD      D,V_BSODDN+0C0H ; ASSUME LOW PRECOMPENSATION
+        LD      A,(REQBLK+C_DRQTRK) ; GET TRACK NUMBER
+        CP      1AH             ; COMPARE TO FIRST-THIRD BOUNDARY
+        JR      C,CTL2          ; JUMP IF ON OUTSIDE THIRD OF DISK
+
+        LD      D,V_BSODDN+80H  ; ASSUME MEDIUM PRECOMPENSATION
+        CP      34H 
+        JR      C,CTL2          ; JUMP IF ON MIDDLE THIRD OF DISK
+
+        LD      D,V_BSODDN+40H  ; USE HIGH PRECOMPENSATION
+;
+;  ASSEMBLE THE CONTROL BYTE AND SET IT INTO BOARD HARDWARE.
+;
+CTL2
+        LD      A,(OLDUNIT)     ; GET UNIT NUMBER 
+        OR      D               ; INSERT DENSITY CONTROLS
+        OR      E               ; INSERT SIDE SELECT INFO
+        OUT     (P_BS),A
+
+        SUB     A               ; CLEAR C FLAG FOR EXIT
+        RET
+        .PAGE
+;*        SUBROUTINE READSEC - READ ONE DISK SECTOR
+;
+;         ENTRY - UNIT SELECTED AND POSITIONED
+;
+;         EXIT - Z FLAG SET IF NO ERROR 
+;
+READSEC
+;
+;  ZERO THE RETRY COUNT, AND SEND THE SECTOR NUMBER TO
+;  THE 179X.
+;
+        LD      A,0             ; ZERO RETRY COUNT
+        LD      (RETRY),A
+
+READRTY
+        LD      A,(REQBLK+C_DRQSEC) ; GET SECTOR NUMBER
+        XOR     0FFH            ; INVERT FOR BUS
+        OUT     (P_SE),A        ; SEND SECTOR NUMBER TO 179X
+;
+;  LOAD UP THE ADDRESS OF THE DATA BUFFER, AND THEN
+;  ISSUE THE READ COMMAND.
+;
+        LD      HL,RDEND        ; COMMAND END PROCESSOR
+        LD      (FUNRET),HL     ; SAVE ADDRESS
+
+        LD      HL,DATBUF       ; ADDRESS OF DATA BUFFER
+
+        LD      A,SCORDSCS+V_SCOSSL ; READ COMMAND
+        XOR     0FFH
+        OUT     (P_SC),A        ; SEND TO 179X
+;
+;  DATA TRANSFER LOOP
+;
+RDDATLP
+        IN      A,(P_BS+V_BSWAT) ; WAIT FOR DATA TO ARRIVE
+
+        IN      A,(P_DT)        ; READ DATA FROM 179X
+        XOR     0FFH            ; INVERT FOR BUS
+        LD      (HL),A          ; STORE AWAY IN BUFFER
+
+        INC     HL              ; BUMP BUFFER POINTER
+        JR      RDDATLP         ; LOOP UNTIL WE'RE INTERRUPTED
+
+
+
+;*
+;  COME HERE AFTER THE 179X INTERRUPTS AT THE END OF THE
+;  SECTOR.  CHIP STATUS IS IN THE A REGISTER.
+;
+RDEND
+        AND     V_SCINRD+V_SCIRNF+V_SCICRC+V_SCILDT+V_SCIBSY
+        RET     Z               ; RETURN IF NO ERRORS
+
+        CALL    RECVR           ; PERFORM RECOVERY ACTIONS
+        JR      C,READRTY       ; LOOP IF RETRY REQUESTED
+
+        CALL    DIAGERR         ; DIAGNOSE ERROR
+        RET
+        .PAGE
+;*        SUBROUTINE WRITSEC - WRITE ONE DISK SECTOR
+;
+;         ENTRY - UNIT SELECTED AND POSITIONED
+;
+;         EXIT - Z FLAG SET IF NO ERROR 
+;
+WRITSEC
+
+        .IF     ~FORMAT
+
+;
+;  ZERO THE RETRY COUNT, AND SEND THE SECTOR NUMBER TO THE
+;  179X.
+;
+        LD      A,0             ; ZERO THE RETRY COUNT
+        LD      (RETRY),A
+
+WRITRTY
+        LD      A,(REQBLK+C_DRQSEC) ; GET SECTOR NUMBER
+        XOR     0FFH
+        OUT     (P_SE),A        ; SEND SECTOR NUMBER 179X
+;
+;  LOAD THE ADDRESS OF THE DATA BUFFER, AND THE POINTER TO THE
+;  COMMAND COMPLETE ROUTINE, AND THEN ISSUE THE WRITE COMMAND
+;  TO THE 179X.
+;
+        LD      HL,WRTEND       ; COMMAND END PROCESSOR
+        LD      (FUNRET),HL     ; SAVE ADDRESS
+
+        LD      HL,DATBUF       ; DATA BUFFER ADDRESS
+
+        LD      A,SCOWRSCS+V_SCOSSL ; WRITE COMMAND
+        XOR     0FFH
+        OUT     (P_SC),A
+;
+;  WRITE DATA TRANSFER LOOP
+;
+WTDATLP
+        IN      A,(P_BS+V_BSWAT) ; WAIT FOR DATA REQUEST
+
+        LD      A,(HL)          ; GET DATA BYTE
+        XOR     0FFH
+        OUT     (P_DT),A        ; SEND TO 179X CONTROLLER CHIP
+
+        INC     HL              ; BUMP BUFFER POINTER
+        JR      WTDATLP
+
+
+
+;*
+;  COME HERE AFTER THE 179X INTERRUPTS AT THE END OF THE
+;  SECTOR.  CHIP STATUS IS IN THE A REGISTER.
+;
+WRTEND
+        AND     V_SCINRD+V_SCIPRT+V_SCISKE+V_SCILDT
+        RET     Z               ; RETURN IF NO DATA ERRORS
+
+        CALL    RECVR           ; PERFORM RECOVERY ACTIONS
+        JR      C,WRITRTY       ; JUMP IF RETRY REQUESTED
+
+        CALL    DIAGERR         ; DIAGNOSE ERROR
+
+        .ENDC
+
+        RET
+
+
+
+        .PAGE
+;*        SUBROUTINE FMTTRK -FORMAT       ONE TRACK
+;
+;
+        .IF      FORMAT
+
+FMTTRK
+        LD      HL,FMTEND       ; SET END OF COMMAND ADR
+        LD      (FUNRET),HL
+
+        LD      A,SCOWRTRK      ; FORMAT COMMAND TO 179X
+        XOR     0FFH
+        OUT     (P_SC),A
+
+        .IF      FMTIBM
+
+;
+;  3740 FORMAT ROUTINE.
+;
+        SECTORS 26
+
+        BLOCK   40,0FFH
+        BLOCK   6,00H
+        INDMARK
+        BLOCK   26,0FFH
+
+LP3740
+        BLOCK   6,00H
+        ADRMARK
+        TRACK
+        VALUE   00H 
+        SEC
+        VALUE   00H 
+        CRCMAC
+        BLOCK   11,0FFH
+        BLOCK   6,00H
+        DATMARK
+        BLOCK   128,0E5H
+        CRCMAC
+        BLOCK   27,0FFH
+        REPEAT  LP3740
+
+        ENDING  0FFH
+
+
+
+
+        .ENDC
+
+        .IF      FMTDD
+
+;
+;  DOUBLE-DENSITY FORMAT ROUTINE.
+;
+        SECTORS 16.
+
+        BLOCK   80,4EH
+        BLOCK   12,00H
+        BLOCK   3,0F6H
+        INDMARK
+        BLOCK   50,4EH
+
+LP3740
+        BLOCK   12,00H
+        BLOCK   3,0F5H
+        ADRMARK
+        TRACK
+        VALUE   00H
+        SEC
+        VALUE   02H
+        CRCMAC
+        BLOCK   22,4EH
+        BLOCK   12,00H
+        BLOCK   3,0F5H
+        DATMARK
+        BLOCK   250,0E5H
+        BLOCK   250,0E5H
+        BLOCK   12,0E5H
+        CRCMAC
+        BLOCK   54,4EH
+        REPEAT  LP3740
+
+        ENDING  4EH
+
+        .ENDC
+
+
+
+;*
+;  COME HERE AFTER THE 179X INTERRUPTS OUT OF THE ENDING LOOP.
+;
+FMTEND
+        AND     V_SCINRD+V_SCIPRT+V_SCIWRF+V_SCILDT
+        RET     Z               ; RETURN IF NO ERRORS
+
+        CALL    DIAGERR
+        RET
+
+        .ENDC
+        .PAGE
+;*        SUBROUTINE DELAY
+;
+;         ENTRY - DE CONTAINS THE NUMBER OF 0.1 MS INTERVALS
+;                 TO DELAY.
+;
+;         EXIT - A, B, D, E USED
+;
+;  NOTE - THIS SUBROUTINE HAS BEEN CHANGED FROM THE DCM2 VERSION,
+;         AND IS NOT AS ACCURATE FOR LOW DELAY VALUES.
+;
+DELAY
+        LD      B,19H           ; DELAY FOR FIRST PERIOD
+TIMLP1
+        DJNZ    TIMLP1
+
+        JR      DELLP           ; JUMP INTO FOLLOWING LOOP
+
+DELTOP
+        LD      B,1CH           ; TIMING CONSTANT 
+TIMLP2
+        DJNZ    TIMLP2          ; DELAY FOR FOLLOWING PERIODS
+
+DELLP
+        DEC     DE              ; DECREMENT INTERVAL COUNT
+        LD      A,E             ; SEE IF COUNT NOW ZERO
+        OR      D
+        NOP
+        NOP
+        JR      NZ,DELTOP       ; LOOP IF MORE INTERVALS TO GO
+
+        RET
+        .PAGE
+;*        SUBROUTINE ADVADR - ADVANCE DISK ADDRESS
+;
+;
+ADVADR
+;
+;  LOCATE THE APPROPRIATE ENTRY IN THE MAPPING TABLE.
+;
+        LD      A,(REQBLK+C_DRQMAP) ; GET BYTE WITH CODE
+        ASSUME  S_DRQMAP,EQ,4 
+        ASSUME  LE_FMT,EQ,4
+        AND     V_DRQMAP        ; SAVE ONLY MAP CODE
+        SRA     A               ; SHIFT RIGHT 4-2 PLACES
+        SRA     A
+        LD      C,A             ; MOVE TO LOW BC
+        LD      B,0             ; CLEAR TOP OF BC 
+        LD      IY,MAPTBL       ; ADR OF TABLE
+        ADD     IY,BC           ; COMPUTE ENTRY ADDRESS
+;
+;  ADVANCE THE CURRENT SECTOR ADDRESS
+;
+        LD      A,(IY+C_FMTINT) ; GET INTERLEAVE FACTOR
+        AND     A               ; IF ZERO, NO ADDRESS ADVANCE
+        RET     Z               ; RETURN IF NOT ADVANCE
+
+        LD      HL,REQBLK+C_DRQSEC ; ADR OF SECTOR NUMBER
+        ADD     A,(HL)          ; ADD SECTOR NUMBER AND INTERLEAVE
+        LD      (HL),A          ; PUT BACK UPDATED AMOUNT
+        SUB     (IY+C_FMTSPC)   ; SEE IF PAST END OF TRACK
+        JR      C,ADV1          ; JUMP IF NOT PAST
+        JR      Z,ADV1          ; JUMP IF ON SECTOR 26
+
+        LD      (HL),A          ; UPDATE THE SECTOR ADDRESS 
+;
+;  SEE IF WE HAVE FINISHED A PASS AROUND THE LOGICAL TRACK. 
+;
+ADV1
+        LD      A,(REQBLK+C_DRQS0) ; START OF THIS LOGICAL TRACK
+        CP      (HL)            ; COMPARE TO CURRENT
+        RET     NZ              ; DONE IF NOT RETURNING
+;
+;  ADVANCE TO THE NEXT LOGICAL TRACK.  LUCKILY, ALL
+;  MAPPINGS CURRENTLY SUPPORTED HAVE ONLY TWO LOGICAL
+;  TRACKS PER PHYSICAL TRACK, AND THE FIRST ALWAYS STARTS
+;  WITH AN ODD SECTOR.  THUS, WE CAN CHECK TO SEE IF
+;  THIS PHYSICAL  TRACK IS EXHAUSTED.
+;
+        INC     A               ; INCREMENT SECTOR NUMBER
+        LD      (HL),A          ; SAVE UPDATED SECTOR NUMBER
+        LD      (REQBLK+C_DRQS0),A ; SAVE NEW START OF LOGICAL TRACK
+        BIT     0,A             ; CHECK FOR ODD SECTOR NUMBER
+        RET     Z               ; RETURN IF NOT ODD
+;
+;  TIME TO GO TO THE NEXT PHYSICAL TRACK.
+;  FIRST, TAKE CARE OF THE TRACK OFFSET.  WE HAVE ALREADY
+;  ADDED 2 TO THE ORIGINAL SECTOR ADDRESS, SO ALL OFFSETS
+;  IN THE MAPPING TABLE HAVE 2 SUBTRACTED FROM THEM.
+;
+        ADD     A,(IY+C_FMTTKO)  ; ADD IN TRACK OFFSET
+        LD      D,(IY+C_FMTSPC) ; GET SECTORS PER CYLINDER
+        INC     D
+        CP      D               ; COMPUTE MOD SECTORS/CYLINDER
+        JR      C,ADV2          ; JUMP IF .LE. SECTORS/CYLINDER
+
+        SUB     (IY+C_FMTSPC)   ; COMPUTE MOD SECTORS PER CYLINDER
+
+ADV2
+        LD      (HL),A          ; STORE SECTOR ADR
+        LD      (REQBLK+C_DRQS0),A ; SAVE NEW START OF LOGICAL TRACK
+;
+;  BUMP THE PHYSICAL TRACK NUMBER, AND WE'RE DONE.
+;
+        LD      HL,REQBLK+C_DRQTRK ; ADR OF TRACK NUMBER
+        INC     (HL)            ; BUMP TRACK NUMBER
+        RET
+        .PAGE
+;*        SUBROUTINE RTZ -RECALIBRATE TO TRACK ZERO
+;
+;         ENTRY - UNIT SELECTED
+;
+;         EXIT - Z FLAG SET IF SUCCESSFUL
+;                Z FLAG CLEAR IF ERROR
+;
+RTZ
+        LD      A,(REQBLK+C_DRQUNT) ; SELECT SEEK OUTWARD DIRECTION
+        OR      V_BSOSEL        
+        OUT     (P_BS),A
+
+        LD      L,255           ; LOAD MAXIMUM STEP COUNT
+
+RTZLOOP
+        CALL    GETSTAT         ; GET CURRENT STATUS
+        BIT     S_SCITK0,A
+        JR      NZ,RTZDONE      ; JUMP IF AT TRACK ZERO
+
+        DEC     L               ; DECREMENT STEP COUNT
+        JR      Z,RTZERR        ; JUMP IF MAXIMUM COUNT EXCEEDED
+
+        IN      A,(P_BS+V_BSSTP+V_BSSTT) ; STEP THE POSITIONER
+        LD      DE,STEPTIM/TICK ; WAIT FOR STEP
+        CALL    DELAY
+        JR      RTZLOOP         ; LOOP TO CHECK STATUS
+
+
+
+;*
+;  RTZ IS COMPLETE.  REMEMBER WE ARE NOW AT TRACK ZERO.
+;
+RTZDONE
+        LD      DE,AFSKTIM/TICK ; THIS MAY NOT BE NECESSARY 
+        CALL    DELAY
+
+        LD      A,0             ; NEW TRACK NUMBER
+        LD      (IX+U_CURTRK),A ; REMEMBER IT
+        XOR     0FFH            ; AND SEND TO CONTROLLER CHIP
+        OUT     (P_TK),A
+
+        XOR     A               ; CLEAR Z FLAG
+        RET
+
+
+
+;*
+;  ERROR DETECTED DURING RTZ OPERATION
+;
+RTZERR
+        LD      A,E_RTZERR      ; LOAD ERROR CODE 
+        LD      (ERRCODE),A
+
+        INC     A               ; SET Z FLAG NON-ZERO
+        RET
+        .PAGE
+;*        SUBROUTINE RECVR - PERFORM DATA RECOVERY ACTIONS
+;
+;  ENTRY - -RETRY- CONTAINS NUMBER OF RETRYS
+;                 ALREADY PERFORMED.
+;
+;         EXIT - RETRY INCREMENTED.  C FLAG
+;                SET IF ANOTHER RETRY SHOULD
+;                BE ATTEMPTED.
+;
+RECVR
+;
+;  CHECK THE NO-RETRY FLAG IN THE
+;  REQUEST BLOCK.
+;
+        LD      A,(REQBLK+C_DRQFLG) ; GET FLAG BYTE
+        AND     A               ; CLEAR C FLAG
+        BIT     S_DRQNRC,A
+        RET     NZ              ; RETURN IF NO RECOVERY REQUESTED
+
+;
+;  BUMP THE RETRY COUNT, AND SEE WHETHER WE HAVE ALREADY
+;  ATTEMPTED RECOVERY THE MAXIMUM NUMBER OF TIMES.
+;
+        LD      HL,RETRY        ; ADR OF COUNTER
+        INC     (HL)            ; BUMP COUNT
+        LD      A,(HL)          ; GET RETRY COUNT 
+        CP      MAXRETRY
+        RET     NC              ; EXIT WITH C CLEAR IF EXCEEDED
+;
+;  SEE IF THIS IS RETRY 4, 8, ETC.  AT THESE RETRYS, WE REPOSITION
+;  THE UNIT FIRST.
+;
+        AND     03H             ; SAVE LOW TWO BITS OF COUNT
+        JR      NZ,TRYIT        ; JUMP IF REPOSITION NOT REQUIRED
+;
+;  PERFORM A RTZ FUNCTION, AND THEN RE-SEEK THE UNIT TO THE 
+;  DESIRED TRACK.
+;
+        CALL    RTZ             ; GO TO HOME TRACK
+
+        CALL    SEEK            ; RE-SEEK TO DESIRED TRACK
+;
+;  DELAY A WHILE BEFORE STARTING THE SCAN FOR THE SECTOR
+;  ADDRESS FIELD.  THIS DELAY ALLOWS THE PLL TO MOVE TO ITS 
+;  CENTER-POINT FREQUENCY.
+;
+TRYIT
+        LD      DE,RECTIM       ; PLL RECOVERY TIME
+        CALL    DELAY
+
+        IN      A,(P_BS+V_BSSTT) ; RESTART SELECT TIMER
+
+        SCF                     ; SET C FLAG TO REQUEST RETRY
+        RET
+        .PAGE
+;*  SUBROUTINE DIAGERR - DIAGNOSE HARDWARE ERROR CONDITION
+;
+;         ENTRY - 179X STOPPED, WITH POSSIBLE ERROR CODE
+;
+;         EXIT - ERRCODE SET APPROPRIATELY.
+;
+;       As a hack to get more space for formatting code,
+;       lump most errors together.
+;
+DIAGERR
+        IN      A,(P_SC)        ; GET 179X STATUS 
+        XOR     0FFH            ; INVERT FOR BUS
+        BIT     S_SCINRD,A
+        JR      NZ,NRDY         ; JUMP IF UNIT NOT READY
+
+        .IF     FORMAT=0
+        
+        BIT     S_SCIRNF,A
+        JR      NZ,RNF          ; JUMP IF RECORD NOT FOUND
+
+        BIT     S_SCICRC,A
+        JR      NZ,CRC          ; JUMP ON CRC ERROR
+
+        BIT     S_SCILDT,A
+        JR      NZ,LDT          ; JUMP ON LOST DATA
+
+        IN      A,(P_BS)        ; GET BOARD STATUS
+        BIT     S_BSINWF,A
+        JR      Z,WFT           ; JUMP ON WRITE FAULT
+
+        .ENDC
+        
+        LD      A,E_UNKERR      ; UNKNOWN ERROR
+
+SETERR
+        LD      (ERRCODE),A
+        RET
+
+
+
+;*
+;  UNIT NOT READY
+;
+NRDY
+        LD      A,E_UNTRDY      ; ERROR CODE
+        JR      SETERR
+
+
+
+;*
+;  RECORD NOT FOUND 
+;
+RNF
+        LD      A,E_ADCOMP      ; ERROR CODE
+        JR      SETERR
+
+
+
+;*
+;  CRC ERROR
+;
+CRC
+        LD      A,E_URDTER      ; ERROR CODE
+        JR      SETERR
+
+
+
+;*
+;  LOST DATA
+;
+LDT
+        LD      A,E_LSTDAT      ; ERROR CODE
+        JR      SETERR
+
+
+
+;*
+;  WRITE FAULT
+;
+WFT
+        XOR     A               ; DESELECT UNIT TO CLEAR FAULT
+        OUT     (P_BS),A
+
+        LD      A,E_WRTFLT      ; ERROR CODE
+        JR      SETERR
+        .PAGE
+;*        PROGRAM VARIABLES
+;
+;
+OLDUNIT .BLOCK  1               ; CURRENT UNIT NUMBER
+PHYSEC  .BLOCK  1               ; PHYSICAL SECTOR NUMBER
+CHIPSTAT .BLOCK  1               ; MOST RECENT CHIP STATUS
+RETRY   .BLOCK  1               ; ERROR RETRY COUNT
+UNTTBL  .BLOCK  LE_UNT*MAXUNIT+LE_UNT ; UNIT TABLE
+
+        .IF      DEBUG
+DBGFUNC .BLOCK  1               ; LAST FUNC ARGUMENT
+DBGSTAT .BLOCK  1               ; LAST RESULT FROM GETSTAT
+        .ENDC
+        
+        
+        
+        ASSUME  *,LE,STKBASE-STKSIZE ; MUST FIT IN 1K
+        .PAGE
+;       KEYBOARD TRANSLATION TABLE
+;
+;  THIS TABLE IS ASSEMBLED WITH THE DISK FIRMWARE SO THAT IT RESIDES
+;  IN THE PROM IN MAIN PROCESSOR MEMORY.  IT IS REFERENCED BY MONITOR.
+;
+        .INCLUDE        KEY_TBL.TEXT
+
+        .END
