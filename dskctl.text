@@ -1,15 +1,12 @@
-        .ABSOLUTE
-        .PROC   DSKCTL
-
-        .ORG    0000H
-
-LISTINC .EQU    0
-        .INCLUDE ASMINC.TEXT
-        .INCLUDE DUTEXT.TEXT
 
         DEF_DSK                 DEFINE DISK SYMBOLS
 
-
+;
+;  Once this code is loaded into the floppy disk controller, it executes
+;  starting at location 0000H, so ORG to that.  The address of the
+;  code in the PROM will be different.
+;
+        .ORG    0000H
 
 
 ;**    VERSION   E6
@@ -23,16 +20,15 @@ LISTINC .EQU    0
 ;
 
         .PAGE
-;*        ASSEMBLY PARAMETERS 
+;*        ASSEMBLY PARAMETERS
 ;
 ;
-DEBUG   .EQU    0               ; DEBUG OPTIONS
+DCDEBUG   .EQU    0             ; DCDEBUG OPTIONS
 FORMAT  .EQU    0               ; DO NOT ASSEMBLE TRACK FORMAT CODE
 FMTIBM  .EQU    0               ; DO NOT FORMAT 3740 SECTORS
 FMTDD   .EQU    1               ; DO FORMAT DOUBLE-DENSITY SECTORS
 MAXUNIT .EQU    1               ; MAXIMUM UNIT NUMBER
 
-KEY_TBL .EQU    0C00H-0800H     ; PUT KEYBOARD TABLE AT 0C00H
 
 
 
@@ -40,7 +36,7 @@ KEY_TBL .EQU    0C00H-0800H     ; PUT KEYBOARD TABLE AT 0C00H
 ;
 ;
 MAXTRK  .EQU    76.             ; MAXIMUM TRACK NUMBER
-MAXRETRY .EQU    15.             ; MAXIMUM NUMBER OF RETRYS 
+MAXRETRY .EQU    15.             ; MAXIMUM NUMBER OF RETRYS
 WINDOW  .EQU    0400H           ; ADDRESS OF MEMORY WINDOW
 STKBASE .EQU    03FFH           ; BASE OF PROCESSOR STACK
 STKSIZE .EQU    10.             ; MAXIMUM SIZE OF STACK
@@ -48,7 +44,7 @@ CMDCODE .EQU    WINDOW          ; BYTE CONTAING HOST COMMAND
 ERRCODE .EQU    CMDCODE+1       ; ERROR CODE RETURNED TO HOST
 REQBLK  .EQU    WINDOW+2        ; START OF REQUEST BLOCK
 DATBUF  .EQU    WINDOW+10H      ; DQTA BUFFER
-TICK    .EQU    100.            ; RESOLUTION OF DELAY SUBROUTINE (US) 
+TICK    .EQU    100.            ; RESOLUTION OF DELAY SUBROUTINE (US)
 
 
 
@@ -70,7 +66,7 @@ RDSEC   .EQU    03H             ; COMMAND CODE FOR A READ
 ;
 HDLDTIM .EQU    700.          ; HEAD LOAD DELAY TO VALID DATA (CDC SAYS 40 MS)
                               ; EXPRESSED IN TICKS
-AFWTTIM .EQU    1000.           ; DELAY AFTER WRITE TO SEEK 
+AFWTTIM .EQU    1000.           ; DELAY AFTER WRITE TO SEEK
 STEPTIM .EQU    3000.           ; STEP PULSE INTERVAL
 AFSKTIM .EQU    20000.          ; HEAD SETTLE AFTER STEP
 
@@ -241,12 +237,12 @@ $1      IN      A,(P_BS+V_BSWAT)
 
 
 
-;*        MACRO SEC 
+;*        MACRO SEC
 ;
 ;
         .MACRO  SEC
         IN      A,(P_BS+V_BSWAT)
-        LD      A,D 
+        LD      A,D
         XOR     0FFH
         OUT     (P_DT),A
         INC     D
@@ -271,7 +267,7 @@ $1      IN      A,(P_BS+V_BSWAT)
         XOR     A               ; CLEAR ERROR CODE
         LD      (ERRCODE),A
 ;
-;  EXECUTE RTZ OPERATIONS ON ALL UNITS. 
+;  EXECUTE RTZ OPERATIONS ON ALL UNITS.
 ;
         LD      (REQBLK+C_DRQUNT),A  ;START RTZ WITH UNIT ZERO
 
@@ -284,7 +280,7 @@ INITLP
 ;
 ;  LOOP IF THERE ARE MORE UNITS CONFIGURED IN THE SYSTEM.
 ;
-        LD      HL,REQBLK+C_DRQUNT ; ADDRESS OF UNIT NUMBER 
+        LD      HL,REQBLK+C_DRQUNT ; ADDRESS OF UNIT NUMBER
         INC     (HL)            ; BUMP UNIT NUMBER
         LD      A,(HL)          ; GET NEW UNIT NUMBER
         CP      MAXUNIT+1
@@ -309,7 +305,7 @@ SIZTBL
 ;*        MAPPING TABLE
 ;
 ;  THE ENTRIES IN THIS TABLE CONTAIN INFO FOR ADVANCING THIS
-;  DISK ADDRESS.  THEY ARE INDEXED BY THE MAPPING CODE PART 
+;  DISK ADDRESS.  THEY ARE INDEXED BY THE MAPPING CODE PART
 ;  OF THE DISK FORMAT BYTE.
 ;
 MAPTBL
@@ -318,18 +314,18 @@ MAPTBL
         .BYTE   0
         .BYTE   0
 
-        .BYTE   6               ; CP/M 1.4 FORMAT 
+        .BYTE   6               ; CP/M 1.4 FORMAT
         .BYTE   0-2             ; SHOULD BE 0FE(16)
         .BYTE   26.             ; SECTORS PER CYLINDER
         .BYTE   0
 
-        .BYTE   2               ; UCSD STANDARD (DEC RT-11) 
-        .BYTE   6-2 
+        .BYTE   2               ; UCSD STANDARD (DEC RT-11)
+        .BYTE   6-2
         .BYTE   26.             ; SECTORS PER CYLINDER
         .BYTE   0
 
         .BYTE   2               ; OPTIMIZED
-        .BYTE   2-2 
+        .BYTE   2-2
         .BYTE   32.             ; SECTORS PER CYLINDER
         .BYTE   0
         .PAGE
@@ -363,14 +359,14 @@ GETSTAT
 
         IN      A,(P_SC)        ; INPUT STATUS BYTE
         XOR     0FFH            ; INVERT FOR BUS
-        .IF     DEBUG
+        .IF     DCDEBUG
         LD      (DBGSTAT),A
         .ENDC
         RET
         .PAGE
 ;*        SUBROUTINE FUNC - ISSUE CHIP FUNCTION
 ;
-;         ENTRY - COMMAND IN B REGISTER 
+;         ENTRY - COMMAND IN B REGISTER
 ;
 ;         EXIT - THROUGH NMI HANDLER
 ;        A CONTAINS NEW STATUS
@@ -384,7 +380,7 @@ FUNC
         OUT     (P_DT),A        ; DO NOT MOVE POSITIONER
 
         LD      A,B             ; MOVE COMMAND TO A
-        .IF      DEBUG
+        .IF      DCDEBUG
         LD      (DBGFUNC),A     ; SAVE FUNCTION
         .ENDC
         XOR     0FFH            ; INVERT FOR BUS
@@ -398,13 +394,13 @@ INTHNG
 ;  WE COME HERE AFTER THE CONTROLLER CHIP HAS FINISHED A FUNCTION
 ;  AND GENERATED AN INTERRUPT.
 ;  THE CODE THAT STARTED THE FUNCTION MUST SET UP FUNRET PROPERLY
-;  FIRST. 
+;  FIRST.
 ;
         .ORG    P_NMI
 
-        POP     HL              ; DISCARD INTERRUPT ADDRESS 
+        POP     HL              ; DISCARD INTERRUPT ADDRESS
 
-        IN      A,(P_SC)        ; GET CHIP STATUS 
+        IN      A,(P_SC)        ; GET CHIP STATUS
         XOR     0FFH            ; INVERT FOR BUS
         LD      (CHIPSTAT),A    ; SAVE CHIP STATUS
 RETM1   JP      $-$             ; RETURN ADDRESS INSERTED HERE
@@ -416,14 +412,14 @@ FUNRET  .EQU    RETM1+1         ; PLACE TO PUT ADDRESS
 ;
 WAITCMD
         EI                      ; ENABLE HOST (MASKABLE) INTERRUPT
-        
+
         HALT                    ; WAIT FOR INTERRUPT
 
 
 
 ;*      COMMAND HANDLER
 ;
-;  COME HERE AFTER HOST WAKES 
+;  COME HERE AFTER HOST WAKES
 ;  UP THE CONTROLLER.
 ;
 COMMAND
@@ -504,7 +500,7 @@ WTSKERR
 FMTCMD
 
         .IF     FORMAT=0
-        LD      A,E_PRMERR      ; ILLEGAL COMMAND 
+        LD      A,E_PRMERR      ; ILLEGAL COMMAND
         LD      (ERRCODE),A
         JP      WAITCMD
 
@@ -517,7 +513,7 @@ FMTCMD
         LD      A,0             ; START AT TRACK 0
         LD      (REQBLK+C_DRQTRK),A
 ;
-;  TOP OF THE CYLINDER LOOP.  FORMAT ONE CYLINDER 
+;  TOP OF THE CYLINDER LOOP.  FORMAT ONE CYLINDER
 ;
 FMTLOOP
         LD      A,1             ; START FORMATTING WITH SECTOR 1
@@ -545,7 +541,7 @@ FMTLOOP
 
 ;
 ;  INCREMENT THE TRACK NUMBER, AND SEE IF THERE ARE MORE
-;  TO GO. 
+;  TO GO.
 ;
         LD      A,(REQBLK+C_DRQTRK) ; GET TRACK JUST FORMATTED
         INC     A
@@ -568,14 +564,14 @@ SELUNIT
         JR      Z,CHKUNN        ; JUMP IF MOTOR RUNNING
 
         IN      A,(P_BS+V_BSSTT) ; START THE SELECT TIMER
-        
+
         LD      DE,INDEXD        ; DELAY UNTIL UNIT DETECTS INDEX PULSE
         CALL    DELAY
-        
+
         LD      A,(CMDCODE)     ; GET CURRENT COMMAND
         CP      RDSEC
         JR      Z,CHKUNN        ; DON'T WAIT IF DOING READ
-        
+
         LD      DE,TURN_ON      ; DELAY UNTIL MOTOR UP TO SPEED
         CALL    DELAY
 ;
@@ -587,7 +583,7 @@ CHKUNN
         LD      B,A             ; MOVE NEW UNIT TO B
         LD      A,(OLDUNIT)     ; GET OLD UNIT NUMBER
         CP      B               ; COMPARE NEW TO OLD
-        JR      Z,RSTTIM        ; JUMP IF NO CHANGE IN UNIT 
+        JR      Z,RSTTIM        ; JUMP IF NO CHANGE IN UNIT
 ;
 ;  SINCE WE ARE CHANGING UNITS, FIRST UNLOAD THE
 ;  HEAD ON THE UNIT WE ARE LEAVING.
@@ -604,8 +600,8 @@ CHKUNN
         LD      A,(REQBLK+C_DRQUNT) ; GET UNIT NUMBER
         ASSUME  LE_UNT,EQ,2
         LD      C,A             ; MOVE TO BOTTOM OF BC
-        SLA     C               ; MULTIPLY BY TWO 
-        LD      B,0             ; CLEAR TOP OF BC 
+        SLA     C               ; MULTIPLY BY TWO
+        LD      B,0             ; CLEAR TOP OF BC
         LD      IX,UNTTBL       ; ADDRESS OF TABLE
         ADD     IX,BC           ; CREATE ENTRY ADDRESS
 ;
@@ -624,7 +620,7 @@ RSTTIM
 ;
 ;         ENTRY - UNIT SELECTED
 ;
-;         EXIT - Z FLAG SET IF NO ERROR 
+;         EXIT - Z FLAG SET IF NO ERROR
 ;
 ;  NOTE - THIS ROUTINE ALSO MAKES SURE THE HEAD IS LOADED,
 ;  AND SETS UP PRECOMPENSATION, SIDE SELECT, AND DENSITY SELECT.
@@ -670,7 +666,7 @@ SKCHKHD
 ;
 HEADLD
         LD      A,(REQBLK+C_DRQFMT) ; GET REQUEST FORMAT BYTE
-        LD      D,A 
+        LD      D,A
         IN      A,(P_BS)        ; GET CONTROLLER BOARD STATUS
         BIT     S_BSIDTY,A
         JR      NZ,SKISSS        ; JUMP IF SINGLE-DENSITY
@@ -701,12 +697,12 @@ SKDENOK
         CP      MAXTRK+1        ; MAKE SURE TRACK NUMBER IS LEGAL
         JP      NC,BADTRKN      ; JUMP IF ILLEGAL TRACK NUMBER
 
-        SUB     (IX+U_CURTRK)   ; SUBTRACT CURRENT POSITION 
+        SUB     (IX+U_CURTRK)   ; SUBTRACT CURRENT POSITION
         JR      Z,SEEKDONE      ; JUMP IF NO SEEK NEEDED
 ;
 ;  TO PERFORM A SEEK, FIRST WE WAIT AWHILE TO MAKE SURE THAT
 ;  THE PROPER AFTER-WRITE TIME HAS EXPIRED.  NOTE THAT IT
-;  PROBABLY ALREADY HAS, BUT FOR SIMPLICITY WE WAIT ANYWAY. 
+;  PROBABLY ALREADY HAS, BUT FOR SIMPLICITY WE WAIT ANYWAY.
 ;
         PUSH    AF              ; SAVE FLAGS AND OFFSET
         LD      DE,AFWTTIM/TICK ; DELAY AFTER WRITE
@@ -719,7 +715,7 @@ SKDENOK
 
         LD      L,A             ; SAVE OFFSET COUNT IN L
         LD      A,(REQBLK+C_DRQUNT) ; CREATE A SEEK INWARD COMMAND
-        OR      V_BSOSID+V_BSOSEL        
+        OR      V_BSOSID+V_BSOSEL
         OUT     (P_BS),A        ; SEND COMMAND
 
         JR      SEEKSTEP
@@ -734,7 +730,7 @@ SEEKOUT
         LD      L,A             ; SAVE OFFSET IN L
 
         LD      A,(REQBLK+C_DRQUNT) ; CREATE A SEEK OUTWARD COMMAND
-        OR      V_BSOSEL        
+        OR      V_BSOSEL
         OUT     (P_BS),A        ; SEND COMMAND
 ;
 ;  LOOP FOR EACH TRACK STEPPED OVER, UNTIL THE DESIRED LOCATION
@@ -766,7 +762,7 @@ SEEKDONE
         AND     V_DRQSSZ        ; SAVE ONLY THE SIZE CODE
         ASSUME  LE_SZ,EQ,1
         LD      C,A             ; MOVE TO LOW BC
-        LD      B,0             ; CLEAR TOP OF BC 
+        LD      B,0             ; CLEAR TOP OF BC
         LD      IY,SIZTBL       ; ADR OF START OF TABLE
         ADD     IY,BC           ; COMPUTE ADDRESS OF ENTRY
 ;
@@ -800,7 +796,7 @@ CTL1
         JR      C,CTL2          ; JUMP IF ON OUTSIDE THIRD OF DISK
 
         LD      D,V_BSODDN+80H  ; ASSUME MEDIUM PRECOMPENSATION
-        CP      34H 
+        CP      34H
         JR      C,CTL2          ; JUMP IF ON MIDDLE THIRD OF DISK
 
         LD      D,V_BSODDN+40H  ; USE HIGH PRECOMPENSATION
@@ -808,7 +804,7 @@ CTL1
 ;  ASSEMBLE THE CONTROL BYTE AND SET IT INTO BOARD HARDWARE.
 ;
 CTL2
-        LD      A,(OLDUNIT)     ; GET UNIT NUMBER 
+        LD      A,(OLDUNIT)     ; GET UNIT NUMBER
         OR      D               ; INSERT DENSITY CONTROLS
         OR      E               ; INSERT SIDE SELECT INFO
         OUT     (P_BS),A
@@ -820,7 +816,7 @@ CTL2
 ;
 ;         ENTRY - UNIT SELECTED AND POSITIONED
 ;
-;         EXIT - Z FLAG SET IF NO ERROR 
+;         EXIT - Z FLAG SET IF NO ERROR
 ;
 READSEC
 ;
@@ -879,7 +875,7 @@ RDEND
 ;
 ;         ENTRY - UNIT SELECTED AND POSITIONED
 ;
-;         EXIT - Z FLAG SET IF NO ERROR 
+;         EXIT - Z FLAG SET IF NO ERROR
 ;
 WRITSEC
 
@@ -973,9 +969,9 @@ LP3740
         BLOCK   6,00H
         ADRMARK
         TRACK
-        VALUE   00H 
+        VALUE   00H
         SEC
-        VALUE   00H 
+        VALUE   00H
         CRCMAC
         BLOCK   11,0FFH
         BLOCK   6,00H
@@ -1061,7 +1057,7 @@ TIMLP1
         JR      DELLP           ; JUMP INTO FOLLOWING LOOP
 
 DELTOP
-        LD      B,1CH           ; TIMING CONSTANT 
+        LD      B,1CH           ; TIMING CONSTANT
 TIMLP2
         DJNZ    TIMLP2          ; DELAY FOR FOLLOWING PERIODS
 
@@ -1083,13 +1079,13 @@ ADVADR
 ;  LOCATE THE APPROPRIATE ENTRY IN THE MAPPING TABLE.
 ;
         LD      A,(REQBLK+C_DRQMAP) ; GET BYTE WITH CODE
-        ASSUME  S_DRQMAP,EQ,4 
+        ASSUME  S_DRQMAP,EQ,4
         ASSUME  LE_FMT,EQ,4
         AND     V_DRQMAP        ; SAVE ONLY MAP CODE
         SRA     A               ; SHIFT RIGHT 4-2 PLACES
         SRA     A
         LD      C,A             ; MOVE TO LOW BC
-        LD      B,0             ; CLEAR TOP OF BC 
+        LD      B,0             ; CLEAR TOP OF BC
         LD      IY,MAPTBL       ; ADR OF TABLE
         ADD     IY,BC           ; COMPUTE ENTRY ADDRESS
 ;
@@ -1106,9 +1102,9 @@ ADVADR
         JR      C,ADV1          ; JUMP IF NOT PAST
         JR      Z,ADV1          ; JUMP IF ON SECTOR 26
 
-        LD      (HL),A          ; UPDATE THE SECTOR ADDRESS 
+        LD      (HL),A          ; UPDATE THE SECTOR ADDRESS
 ;
-;  SEE IF WE HAVE FINISHED A PASS AROUND THE LOGICAL TRACK. 
+;  SEE IF WE HAVE FINISHED A PASS AROUND THE LOGICAL TRACK.
 ;
 ADV1
         LD      A,(REQBLK+C_DRQS0) ; START OF THIS LOGICAL TRACK
@@ -1159,7 +1155,7 @@ ADV2
 ;
 RTZ
         LD      A,(REQBLK+C_DRQUNT) ; SELECT SEEK OUTWARD DIRECTION
-        OR      V_BSOSEL        
+        OR      V_BSOSEL
         OUT     (P_BS),A
 
         LD      L,255           ; LOAD MAXIMUM STEP COUNT
@@ -1183,7 +1179,7 @@ RTZLOOP
 ;  RTZ IS COMPLETE.  REMEMBER WE ARE NOW AT TRACK ZERO.
 ;
 RTZDONE
-        LD      DE,AFSKTIM/TICK ; THIS MAY NOT BE NECESSARY 
+        LD      DE,AFSKTIM/TICK ; THIS MAY NOT BE NECESSARY
         CALL    DELAY
 
         LD      A,0             ; NEW TRACK NUMBER
@@ -1200,7 +1196,7 @@ RTZDONE
 ;  ERROR DETECTED DURING RTZ OPERATION
 ;
 RTZERR
-        LD      A,E_RTZERR      ; LOAD ERROR CODE 
+        LD      A,E_RTZERR      ; LOAD ERROR CODE
         LD      (ERRCODE),A
 
         INC     A               ; SET Z FLAG NON-ZERO
@@ -1231,7 +1227,7 @@ RECVR
 ;
         LD      HL,RETRY        ; ADR OF COUNTER
         INC     (HL)            ; BUMP COUNT
-        LD      A,(HL)          ; GET RETRY COUNT 
+        LD      A,(HL)          ; GET RETRY COUNT
         CP      MAXRETRY
         RET     NC              ; EXIT WITH C CLEAR IF EXCEEDED
 ;
@@ -1241,7 +1237,7 @@ RECVR
         AND     03H             ; SAVE LOW TWO BITS OF COUNT
         JR      NZ,TRYIT        ; JUMP IF REPOSITION NOT REQUIRED
 ;
-;  PERFORM A RTZ FUNCTION, AND THEN RE-SEEK THE UNIT TO THE 
+;  PERFORM A RTZ FUNCTION, AND THEN RE-SEEK THE UNIT TO THE
 ;  DESIRED TRACK.
 ;
         CALL    RTZ             ; GO TO HOME TRACK
@@ -1249,7 +1245,7 @@ RECVR
         CALL    SEEK            ; RE-SEEK TO DESIRED TRACK
 ;
 ;  DELAY A WHILE BEFORE STARTING THE SCAN FOR THE SECTOR
-;  ADDRESS FIELD.  THIS DELAY ALLOWS THE PLL TO MOVE TO ITS 
+;  ADDRESS FIELD.  THIS DELAY ALLOWS THE PLL TO MOVE TO ITS
 ;  CENTER-POINT FREQUENCY.
 ;
 TRYIT
@@ -1271,13 +1267,13 @@ TRYIT
 ;       lump most errors together.
 ;
 DIAGERR
-        IN      A,(P_SC)        ; GET 179X STATUS 
+        IN      A,(P_SC)        ; GET 179X STATUS
         XOR     0FFH            ; INVERT FOR BUS
         BIT     S_SCINRD,A
         JR      NZ,NRDY         ; JUMP IF UNIT NOT READY
 
         .IF     FORMAT=0
-        
+
         BIT     S_SCIRNF,A
         JR      NZ,RNF          ; JUMP IF RECORD NOT FOUND
 
@@ -1292,7 +1288,7 @@ DIAGERR
         JR      Z,WFT           ; JUMP ON WRITE FAULT
 
         .ENDC
-        
+
         LD      A,E_UNKERR      ; UNKNOWN ERROR
 
 SETERR
@@ -1311,7 +1307,7 @@ NRDY
 
 
 ;*
-;  RECORD NOT FOUND 
+;  RECORD NOT FOUND
 ;
 RNF
         LD      A,E_ADCOMP      ; ERROR CODE
@@ -1356,20 +1352,11 @@ CHIPSTAT .BLOCK  1               ; MOST RECENT CHIP STATUS
 RETRY   .BLOCK  1               ; ERROR RETRY COUNT
 UNTTBL  .BLOCK  LE_UNT*MAXUNIT+LE_UNT ; UNIT TABLE
 
-        .IF      DEBUG
+        .IF      DCDEBUG
 DBGFUNC .BLOCK  1               ; LAST FUNC ARGUMENT
 DBGSTAT .BLOCK  1               ; LAST RESULT FROM GETSTAT
         .ENDC
-        
-        
-        
-        ASSUME  *,LE,STKBASE-STKSIZE ; MUST FIT IN 1K
-        .PAGE
-;       KEYBOARD TRANSLATION TABLE
-;
-;  THIS TABLE IS ASSEMBLED WITH THE DISK FIRMWARE SO THAT IT RESIDES
-;  IN THE PROM IN MAIN PROCESSOR MEMORY.  IT IS REFERENCED BY MONITOR.
-;
-        .INCLUDE        KEY_TBL.TEXT
 
-        .END
+
+
+        ASSUME  *,LE,STKBASE-STKSIZE ; MUST FIT IN 1K
