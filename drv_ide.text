@@ -319,7 +319,7 @@ $1	LD	A,REGDATA	;DATA REGISTER ADDRESS, NO READ LINE
 	AND	1H
 	CALL	NZ,SHOWERRORS	;IF ERROR DISPLAY STATUS
 
-	XOR	A		; CLEAR A
+	CALL	IDEADVBLK	; Advance the block number
 	RET
 
 GOSHOWERRORS
@@ -390,13 +390,12 @@ $10	LD	A,(HL)
 	AND	1H
 	CALL	NZ,SHOWERRORS	;IF ERROR DISPLAY STATUS
 
-	XOR	A		; CLEAR A
+	CALL	IDEADVBLK	; Advance the block number
 	RET
 
 GOBSHOWERRORS
 	JP	SHOWERRORS
 	.PAGE
-
 ;*        SUBROUTINE WRLBA
 ;
 ;  WRITE THE LOGICAL BLOCK ADDRESS TO THE DRIVE'S REGISTERS
@@ -610,6 +609,22 @@ $1	DJNZ	$1
 	DEC	A
 	JR	NZ,DELAY3
 
+	RET
+	.PAGE
+
+;*	  SUBROUTINE IDEADVBLK
+;
+;  Advance the block number in the request block.
+;
+;         ENTRY - Request block pointer in IY.
+;
+;	  EXIT - A Register zero
+;
+IDEADVBLK  LD	HL,(IY+C_DRQTRK)	; Increment block number
+	INC	HL
+	LD	(IY+C_DRQTRK),HL
+
+	XOR	A		; Clear A
 	RET
 	.PAGE
 
