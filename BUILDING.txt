@@ -1,0 +1,12 @@
+IDE Test build:
+
+dd if=pm_sys/system.wrk.code of=prom1.bin skip=1 count=4
+
+Normal Build:
+
+ucsdpsys -P "II.0" -r prom1/src -w pm_sys -b script1
+
+dd if=pm_sys/system.wrk.code of=prom1.bin skip=1 count=8
+
+Delete zero bytes between 0x314 - 0xb13 inclusive
+
