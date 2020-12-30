@@ -1,0 +1,31 @@
+SELUNIT
+
+Test if motor is already running
+
+    Start motor (input 0x40) (BDI*, IA6)  
+    Delay a while
+
+Different drive number?
+
+    Select drive (output 0x04) (4M-11, IA3)
+
+Restart motor (input 0x40) (BDI*, IA6)
+
+
+
+
+RTZ
+
+Select drive (output 0x04) (4M-11, IA3)
+
+RTZLOOP
+
+    GETSTAT Tell controller chip to update status (output to port 4);  Delay a while;  Input from port 4
+    
+    Return if track zero is set
+
+    Step heads (Input 0x48)   (BDI*, IA6, IA3)
+
+    Delay a while
+
+    Loop to RTZLOOP

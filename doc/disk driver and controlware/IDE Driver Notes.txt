@@ -1,0 +1,15 @@
+Design Choices
+---------------
+Only need to worry about transferring one sector per monitor call.  That's all the floppy driver does, and the interpreter deals appropriately.
+
+Use mapping code zero to denote IDE.
+
+Need to advance the disk address (LBA) after each transfer.
+
+Store logical disk number in upper six bits of unit number.  Use track field for the sector number within the logical disk.  Disk address monitor request just stores the block number into the track field.
+
+C_DRQTRK is one byte from the beginning of the request block, so the word starting there is unaligned.  However, it looks from the Z80 User Manual like this isn't an issue.
+
+Interpreter needs to use the sector length field added to the request block rather than looking at a bit in the type code.
+
+Should the sector length field be added to the request block, and filled in by the translate address request?  That would be clean, but may cause compatibility issues with the floppy bootstrap.  There are also bits defined in the format field of the request block for sector size;  I don't know if they are actually used.

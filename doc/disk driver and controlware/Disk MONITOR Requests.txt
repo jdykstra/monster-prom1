@@ -1,0 +1,25 @@
+There are multiple levels of disk I/O routines.  The interpreter contains
+functions that map to the monitor requests.  The monitor requests invoke
+MONITOR functions which put the request into the memory window shared with
+the controller.  Finally, the firmware contains functions that finally do
+the operations.
+
+Request blocks are shared between the monitor request functions and the disk drivers.
+
+The physical disk address in the request block is updated by a disk
+read or write.
+
+There are three monitor calls for disk I/O:  Read, write, and wait for
+asynchronous completion.  One sector at a time is transfered.
+
+Most of my disks are double-density, 512 bytes per sector, and use the 
+"optimized" sector layout.
+
+Unit numbers are 4 and 5, or 0 and 1.
+
+"Relative disk addresses" are linear block numbers.  There is a monitor
+entry point which converts these to physical addresses, getting the disk
+format from the request block and storing the computed physical address
+into the request block.
+
+

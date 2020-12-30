@@ -1,0 +1,6 @@
+DSKCTL appears on both OS and INTERP.  The copy on OS is later than the one on INTERP;  version E6 vs. version D1.  Only OS contains the KEY_TBL.TEXT file which puts the "new" keyboard translation table on the end of the DSKCTL binary.
+
+KEYREAD.TEXT?
+
+The copy of DSKCTL.TXT on INTERP also seems to have termination messages from SNOBOL on the end of it.
+

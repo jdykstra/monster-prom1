@@ -1,0 +1,99 @@
+Disk Driver
+-------------
+
+;*        MODULE DISKDRV - DISK I/O DRIVER
+;
+;
+;  DSKINIT - INTIALIZE DISK SUBSYSTEM.  LOADS AND RESETS THE
+;            CONTROLLER.
+;
+;         ENTRY - NO PARAMETERS
+;
+;         EXIT - A CONTAINS ERROR CODE
+;                Z FLAG SET IF NO ERROR 
+;                ALL REGISTERS USED
+;
+;  DSKRD - READ DISK.  CURRENTLY LIMITED TO SINGLE-SECTOR.
+;          SYNCHRONOUS ONLY.
+;
+;         ENTRY - HL POINTS TO REQUEST BLOCK
+;
+;         EXIT - A CONTAINS ERROR CODE
+;                Z FLAG SET IF NO ERROR 
+;                ALL REGISTERS USED
+;
+;  DSKWRT - WRITE DISK.  CURRENTLY LIMITED TO SINGLE-SECTOR.
+;           MAY BE DONE ASYNCHRONOUSLY. 
+;
+;         ENTRY - HL POINTS TO REQUEST BLOCK
+;
+;         EXIT - A CONTAINS ERROR CODE
+;                Z FLAG SET IF NO ERROR 
+;                ALL REGISTERS USED
+;
+;  DSKADR - TRANSLATE RELATIVE DISK ADDRESS.
+;
+;         ENTRY - DE CONTAINS THE RELATIVE DISK ADDRESS
+;                 HL POINTS TO REQUEST BLOCK.
+;
+;         EXIT - A CONTAINS ERROR CODE
+;                Z FLAG SET IF NO ERROR 
+;                ALL REGISTERS USED
+;
+;
+;
+;
+;  ON ALL REQUESTS TO THIS MODULE, HL POINTS TO A REQUEST BLOCK
+        
+DSKSTAT (disk status) and DSKSEEK (disk seek) requests were once defined, but were later deleted to free memory.
+
+"Big" sectors are 512 bytes.  "Small" sectors are 128 bytes.
+
+Read and write requests transfer one sector per call.  (The C_DRQCNT field in the request block is apparently unused.)  Their parameters are passed in a request block, which uses track/head/sector addressing.  The DSKADR request translates a "relative disk address" (LBA-style) and fills it into a request block.
+
+
+;  05 Jan 85 - Load firmware via m memory buffer, so that the ROM holding
+;              the firmware can occupy the same address space as the
+;              disk controller window.
+
+But this feature is apparently not used in the machine's current state, because the disk controller memory window is at the top of the processor address space, overlaying RAM.  This feature may have become unneeded when I added the current keyboard and needed more PROM space for its translation table.
+
+Seeks and writes are currently done synchronously.  (Or at least I hope writes are done synchronously--I didn't check the I/O code in the interpreter to make sure.)  There's probably no opportunity to overlap seeks (and the separate seek request is currently disabled to save PROM space), and doing writes asynchronously is probably a bad idea given the reliability of the floppies.
+
+Different disk formats are handled differently both when their linear address is translated, and during the read and write itself.
+
+DSKINIT is supposed to be called only after a processor reset (i.e. not after any other sort of monitor entry), and it assumes that the controller memory window is mapped over processor memory when it is entered.
+
+Even though I think that we currently don't use the RAM under the disk controller memory window, I don't think there's anything to be gained by leaving the window mapped all the time.  I think it needs to be unmapped for the controlware to run, and anyway mapping and unmapping it doesn't take very long.  (We may need to use that memory for the flash disk driver, anyway.)
+
+The wait loops wait forever.
+
+The linear address is in 128-byte blocks.  There are either one or four blocks in a physical disk sector.
+
+The disk seek monitor request is probably unused.  What about the status request?
+
+Disk requests to the MONITOR are packaged in a request block, which is documented at the start of the MONITOR section of the software binder.
+
+The memory window shared between controller and main processor contains a
+one-byte command code, a one byte error code, and then the request block.  The 
+sector data buffer follows at ofset 0x10 from the start of the window. 
+It appears at 0x0400 in controller address space, and 0xFC00 in main
+address space.  Memory window enable must be set in the controller's I/O port
+for it to appear in main address space.  Enable seems to be a zero;  i.e.
+@40=0.  [This doesn't match the disk code in MONITOR, which writes 0x01 to
+port 40 to gain access to the memory window.  It looks like what should be
+written to see the communication block is 0x03, which includes some sort of
+address bit.  See GETDCONT in MONITOR.]
+
+@40=80 resets controller.
+
+The controller processor halts when it is waiting for a new command.  It's 
+run flag is available by reading port 0x40.  
+
+The initialization code that loads and starts execution of the firmware loops
+until the controller processor stops.  There's no timeout on this (and probably
+other) waits in the disk interface code.
+
+
+
+
