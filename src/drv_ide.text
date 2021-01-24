@@ -4,13 +4,15 @@
 
 
 
-;**    VERSION   B2
-VERSION  .EQU	"B3"
+;**    VERSION  
+VERSION  .EQU	"B4"
 
 
 ;**     CHANGE HISTORY
 ;
-;
+;  Jan-24-2021	Work around hardware idiosyncracy so that top byte of
+;		hex display is correct.  See subroutine IDEWR8D for
+;		details.
 
         .PAGE
 ;       HARDWARE DEFINITIONS
